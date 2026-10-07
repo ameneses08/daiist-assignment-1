@@ -17,7 +17,9 @@ This model might be used primarily by directors, individuals that need to overse
 
 First, since decisions such as these ones require quantities and not yes/no answers, a regression model was chosen. Following, it was also decided that the target should be in log form, causing the coefficients to become % effects that apply proportionally to every store. Stores range from $0.26M to $2.1M a week, so a fixed dollar effect would be wrong for most of them.
 
-Considering that past sales would swamp the drivers being explained, these were not included. Additionally, a chronological split was used since a random split would leak neighbouring weeks into training. Finally, a 52-week test set was utilized in order to include a holiday season and a 13-week validation set was used only for tunning. 
+Considering that past sales would swamp the drivers being explained, these were not included. Additionally, a chronological split was used since a random split would leak neighbouring weeks into training. Finally, a 52-week test set was utilized in order to include a holiday season and a 13-week validation set was used only for tunning.
+
+The main metric is WMAE: the average absolute error in dollars, with holiday weeks counting five times as much as a normal week; MAE, MAPE and R² are reported alongside.
 
 Holiday weeks count five times as much because they are the most important weeks of the year for the stores, with sales far above a normal week (about +40% at Thanksgiving), so a forecast that is too low leads to understocking and lost sales. 
 
@@ -25,13 +27,15 @@ Holiday weeks count five times as much because they are the most important weeks
 
 After initial data exploration, several critical aspects were uncovered. First, it was found that Store alone accounts for 91.7% of the variance. Second, the holiday_flag was missaligned, showing the flagged christmas week as the week after christmas, failing to show the real peak of store sales. Finally, exploration showed that labor day and the Super Bowl had almost no lift or effect.
 
-The best option was to implement a single flag per holiday, considering that with the original holiday flag, the model would get one weight for all holidays. Additionally, Store is a label, not a quantity: fed in as a number, a linear model would assume sales rise or fall steadily from store 1 to store 45. Therefore its one-hot encoded, giving each store its own baseline level.
+The best option was to create a separate flag for each holiday (Super Bowl, Labor Day, Thanksgiving, post-Christmas) plus a new pre-Christmas flag for the real peak (the week dated 18–24 December), since with the original holiday flag the model would get one weight for all holidays. Additionally, Store is a label, not a quantity: fed in as a number, a linear model would assume sales rise or fall steadily from store 1 to store 45. Therefore its one-hot encoded, giving each store its own baseline level.
 
-CPI was found to vary almost entirely between stores, with 99.9% of its variation due to stores, something already captured by the store-level columns. Within each store, the remaining variation is simply a slow, steady upward trend over time. Furthermore, its coefficient is unstable, changing from 0.18 under one regularization strength to 0.28 under another. A coefficient that shifts this much cannot reliably be interpreted as the “effect of inflation.” 
+CPI was found to vary almost entirely between stores, with 99.9% of its variation due to stores, something already captured by the store-level columns. Within each store, the remaining variation is simply a slow, steady upward trend over time. Furthermore, its coefficient is unstable, changing from 0.18 under one regularization strength to 0.28 under another. A coefficient that shifts this much cannot reliably be interpreted as the “effect of inflation.” Removing it barely changed test performance.
+
+Replacing CPI with a time trend made test WMAE worse (≈$93K vs. $86K), and stronger regularization hurt validation WMAE (≈$70K at alpha 0.1 vs. $97K at alpha 10), because the penalty shrinks the real differences between stores.
 
 ## Modeling: three implementations, one model
 
-All three minimise the same ridge objective (average squared error plus a penalty on large weights) on the same data, because PyTorch averages the errors while scikit-learn sums them, the PyTorch penalty uses alpha/n.
+I used a ridge-regularized linear regression on log sales, because its coefficients read directly as % effects. All three implementations minimise the same ridge objective (average squared error plus a penalty on large weights) on the same data; because PyTorch averages the errors while scikit-learn sums them, the PyTorch penalty uses alpha/n.
 
 | Implementation | How it trains |
 |---|---|
